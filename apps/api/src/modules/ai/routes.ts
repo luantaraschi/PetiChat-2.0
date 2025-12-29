@@ -39,6 +39,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
             // Call AI service
             const thesesResults = await aiService.suggestTheses(caseData.factsDescription, {
                 documentType: caseData.caseType,
+                provider: body.provider,
             });
 
             // Delete existing theses for this case
@@ -132,6 +133,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
                 })),
                 clientName: caseData.clientName,
                 caseType: caseData.caseType,
+                provider: body.provider,
             });
 
             // Create document
@@ -214,7 +216,9 @@ export async function aiRoutes(fastify: FastifyInstance) {
             // Call AI service
             const rewrittenText = await aiService.rewriteParagraph(
                 body.originalText,
-                instruction
+                instruction,
+                undefined, // context
+                body.provider
             );
 
             // Optionally update document

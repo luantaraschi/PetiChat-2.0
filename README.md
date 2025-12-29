@@ -140,10 +140,11 @@ Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
 
 | Variável | Descrição | Padrão |
 |----------|-----------|--------|
-| `AI_PROVIDER` | Provider de IA (`openai`, `anthropic`, `google`, `mock`) | `openai` |
+| `AI_PROVIDER` | Provider de IA (`openai`, `google`, `mock`) | `openai` |
 | `OPENAI_MODEL` | Modelo OpenAI a usar | `gpt-4-turbo-preview` |
+| `GOOGLE_MODEL` | Modelo Gemini a usar | `gemini-pro` |
+| `GOOGLE_AI_API_KEY` | Chave Google AI (opcional, requerida se provider=google) | - |
 | `ANTHROPIC_API_KEY` | Chave API Anthropic (opcional) | - |
-| `GOOGLE_AI_API_KEY` | Chave Google AI (opcional) | - |
 | `API_PORT` | Porta do servidor API | `3001` |
 | `CORS_ORIGIN` | Origem permitida para CORS | `http://localhost:5173` |
 | `LOG_LEVEL` | Nível de log | `info` |
@@ -207,9 +208,10 @@ PetiChat/
 - `POST /api/documents/export` - Exportar PDF/DOCX
 
 ### IA
-- `POST /api/ai/suggest-theses` - Sugerir teses
-- `POST /api/ai/generate-document` - Gerar documento
-- `POST /api/ai/rewrite-paragraph` - Reescrever trecho
+### IA
+- `POST /api/ai/suggest-theses` - Sugerir teses (aceita `provider`: 'openai'|'google')
+- `POST /api/ai/generate-document` - Gerar documento (aceita `provider`: 'openai'|'google')
+- `POST /api/ai/rewrite-paragraph` - Reescrever trecho (aceita `provider`: 'openai'|'google')
 
 ### Jurisprudência
 - `POST /api/jurisprudence/search` - Buscar jurisprudências

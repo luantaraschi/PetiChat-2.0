@@ -89,6 +89,7 @@ export const generateDocumentSchema = z.object({
     documentType: documentTypeSchema,
     thesisIds: z.array(z.string().uuid()),
     jurisprudenceIds: z.array(z.string().uuid()),
+    provider: z.enum(['openai', 'google', 'mock']).optional(),
 });
 
 export const exportDocumentSchema = z.object({
@@ -102,6 +103,7 @@ export const exportDocumentSchema = z.object({
 
 export const suggestThesesSchema = z.object({
     caseId: z.string().uuid('ID do caso inválido'),
+    provider: z.enum(['openai', 'google', 'mock']).optional(),
 });
 
 export const rewriteInstructionSchema = z.enum([
@@ -118,6 +120,7 @@ export const rewriteParagraphSchema = z.object({
     originalText: z.string().min(10, 'Texto deve ter no mínimo 10 caracteres'),
     instruction: rewriteInstructionSchema,
     customInstruction: z.string().optional(),
+    provider: z.enum(['openai', 'google', 'mock']).optional(),
 });
 
 // ================================

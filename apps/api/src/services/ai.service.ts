@@ -7,6 +7,7 @@
 
 import OpenAI from 'openai';
 import { z } from 'zod';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { aiThesisResponseSchema, aiDocumentResponseSchema } from '@petichat/shared';
 
 // ================================
@@ -264,6 +265,196 @@ Reescreva o texto conforme a instrução. Mantenha a essência jurídica e retor
 }
 
 // ================================
+// Google Gemini Provider Implementation
+// ================================
+
+class GoogleAIProvider implements AIProvider {
+    private client: GoogleGenerativeAI;
+    private model: any; // GenerativeModel, but kept any to avoid strict type issues if pkg missing
+    private modelName: string;
+
+    constructor() {
+        const apiKey = process.env.GOOGLE_AI_API_KEY;
+
+        if (!apiKey) {
+            console.warn('⚠️ GOOGLE_AI_API_KEY not configured. Google AI features will not work.');
+            // Allow instantiation but methods might fail or check this later.
+            // Requirement says: if provider='google' and KEY empty -> error 400 (or throw here).
+            // But constructor shouldn't typically throw. We'll check in methods or expect the key to be there.
+        }
+
+        this.client = new GoogleGenerativeAI(apiKey || 'placeholder');
+        this.modelName = process.env.GOOGLE_MODEL || 'gemini-pro';
+        this.model = this.client.getGenerativeModel({ model: this.modelName });
+    }
+
+    private checkApiKey() {
+        if (!process.env.GOOGLE_AI_API_KEY) {
+            throw new Error('GOOGLE_AI_API_KEY falhou ou não está configurada');
+        }
+    }
+
+    async suggestTheses(facts: string, options?: ThesisOptions): Promise<ThesisResult[]> {
+        this.checkApiKey();
+        const maxTheses = options?.maxTheses || 6;
+
+        const prompt = `Você é um advogado brasileiro experiente. Analise os fatos abaixo e sugira teses jurídicas.
+
+FATOS DO CASO:
+${facts}
+
+${options?.documentType ? `TIPO DE DOCUMENTO: ${options.documentType}` : ''}
+${options?.area ? `ÁREA DO DIREITO: ${options.area}` : ''}
+
+Forneça até ${maxTheses} teses jurídicas, divididas entre:
+- PRELIMINARES: questões processuais, prescrição, decadência, ilegitimidade, etc.
+- MÉRITO: argumentos de direito material
+
+Responda APENAS em formato JSON válido:
+{
+  "theses": [
+    {
+      "category": "preliminares" | "merito",
+      "title": "Título curto da tese",
+      "content": "Desenvolvimento da tese com fundamentos legais (artigos, leis, princípios)"
+    }
+  ]
+}`;
+
+        try {
+            const result = await this.model.generateContent(prompt);
+            const response = await result.response;
+            let text = response.text();
+
+            // Clean up code blocks if Gemini wraps in ```json ... ```
+            text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+            const parsed = JSON.parse(text);
+            const validated = aiThesisResponseSchema.parse(parsed);
+
+            return validated.theses;
+        } catch (error) {
+            console.error('Error suggesting theses (Google):', error);
+            throw new Error('Falha ao gerar sugestões de teses com Google AI.');
+        }
+    }
+
+    async generateDocument(context: GenerateContext): Promise<GeneratedDocument> {
+        this.checkApiKey();
+        const { facts, documentType, theses, jurisprudences, clientName, caseType } = context;
+
+        const thesesText = theses
+            .map((t, i) => `${i + 1}. [${t.category.toUpperCase()}] ${t.title}\n${t.content}`)
+            .join('\n\n');
+
+        const jurisprudenceText = jurisprudences
+            .map((j) => `- ${j.tribunal} - ${j.processNumber}: ${j.summary}`)
+            .join('\n');
+
+        const documentTypeLabels: Record<string, string> = {
+            petition: 'Petição Inicial',
+            contestation: 'Contestação',
+            appeal: 'Recurso de Apelação',
+            motion: 'Requerimento',
+            brief: 'Parecer',
+        };
+
+        const docLabel = documentTypeLabels[documentType] || 'Peça Jurídica';
+
+        const prompt = `Você é um advogado brasileiro experiente. Gere uma ${docLabel} completa com base nas informações abaixo.
+
+FATOS DO CASO:
+${facts}
+
+${clientName ? `CLIENTE: ${clientName}` : ''}
+${caseType ? `TIPO DE AÇÃO: ${caseType}` : ''}
+
+TESES A UTILIZAR:
+${thesesText}
+
+${jurisprudenceText ? `JURISPRUDÊNCIAS PARA CITAR:\n${jurisprudenceText}` : ''}
+
+Gere uma ${docLabel} profissional e bem estruturada, incluindo:
+1. Endereçamento ao juízo
+2. Qualificação das partes
+3. Exposição dos fatos
+4. Fundamentação jurídica (usando as teses fornecidas)
+5. Pedidos
+6. Valor da causa (se aplicável)
+7. Encerramento
+
+Responda APENAS em formato JSON:
+{
+  "title": "Título do documento",
+  "sections": [
+    {
+      "type": "header|facts|legal_basis|requests|closing",
+      "title": "Título da seção",
+      "content": "Conteúdo em HTML (use <p>, <strong>, <ul>, <li>)"
+    }
+  ]
+}`;
+
+        try {
+            const result = await this.model.generateContent(prompt);
+            const response = await result.response;
+            let text = response.text();
+
+            // Clean up code blocks if Gemini wraps in ```json ... ```
+            text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+            const parsed = JSON.parse(text);
+            const validated = aiDocumentResponseSchema.parse(parsed);
+
+            // Combine sections into HTML
+            const contentHtml = validated.sections
+                .map((s) => `<section><h2>${s.title}</h2>${s.content}</section>`)
+                .join('');
+
+            return {
+                title: validated.title,
+                contentHtml,
+                sections: validated.sections.map((s, i) => ({ ...s, order: i })),
+            };
+        } catch (error) {
+            console.error('Error generating document (Google):', error);
+            throw new Error('Falha ao gerar documento com Google AI.');
+        }
+    }
+
+    async rewriteParagraph(text: string, instruction: string, context?: string): Promise<string> {
+        this.checkApiKey();
+        const instructionLabels: Record<string, string> = {
+            improve: 'Melhore a redação mantendo o sentido original',
+            simplify: 'Simplifique o texto, tornando-o mais direto e claro',
+            expand: 'Expanda o texto com mais detalhes e fundamentação',
+            formal: 'Torne o texto mais formal e técnico juridicamente',
+            custom: instruction,
+        };
+
+        const finalInstruction = instructionLabels[instruction] || instruction;
+
+        const prompt = `${finalInstruction}
+
+TEXTO ORIGINAL:
+${text}
+
+${context ? `CONTEXTO:\n${context}` : ''}
+
+Reescreva o texto conforme a instrução. Mantenha a essência jurídica e retorne APENAS o texto reescrito, sem explicações.`;
+
+        try {
+            const result = await this.model.generateContent(prompt);
+            const response = await result.response;
+            return response.text();
+        } catch (error) {
+            console.error('Error rewriting paragraph (Google):', error);
+            throw new Error('Falha ao reescrever texto com Google AI.');
+        }
+    }
+}
+
+// ================================
 // Mock Provider (for development/testing)
 // ================================
 
@@ -345,42 +536,54 @@ class MockAIProvider implements AIProvider {
 // AI Service Factory
 // ================================
 
-let aiProviderInstance: AIProvider | null = null;
+// ================================
+// AI Service Factory
+// ================================
 
-export function getAIProvider(): AIProvider {
-    if (aiProviderInstance) {
-        return aiProviderInstance;
+const aiProviderInstances: Record<string, AIProvider> = {};
+
+export function getAIProvider(providerName?: string): AIProvider {
+    // If no provider specified, verify if one was already requested or use default
+    // We prioritize the argument 'providerName', then env AI_PROVIDER, then 'openai' default.
+    const resolvedProvider = providerName || process.env.AI_PROVIDER || 'openai';
+
+    if (aiProviderInstances[resolvedProvider]) {
+        return aiProviderInstances[resolvedProvider];
     }
 
-    const provider = process.env.AI_PROVIDER || 'openai';
+    let instance: AIProvider;
 
-    switch (provider) {
+    switch (resolvedProvider) {
         case 'openai':
-            aiProviderInstance = new OpenAIProvider();
+            instance = new OpenAIProvider();
             break;
         case 'mock':
-            aiProviderInstance = new MockAIProvider();
+            instance = new MockAIProvider();
             break;
-        // TODO: Add Anthropic and Google AI providers
+        case 'google':
+        case 'gemini':
+            instance = new GoogleAIProvider();
+            break;
         // case 'anthropic':
-        //   aiProviderInstance = new AnthropicProvider();
-        //   break;
-        // case 'google':
-        //   aiProviderInstance = new GoogleAIProvider();
+        //   instance = new AnthropicProvider();
         //   break;
         default:
-            console.warn(`Unknown AI provider: ${provider}. Using mock provider.`);
-            aiProviderInstance = new MockAIProvider();
+            console.warn(`Unknown AI provider: ${resolvedProvider}. Using mock provider.`);
+            instance = new MockAIProvider();
     }
 
-    return aiProviderInstance;
+    // Cache the instance
+    aiProviderInstances[resolvedProvider] = instance;
+    return instance;
 }
 
 export const aiService = {
-    suggestTheses: (facts: string, options?: ThesisOptions) =>
-        getAIProvider().suggestTheses(facts, options),
-    generateDocument: (context: GenerateContext) =>
-        getAIProvider().generateDocument(context),
-    rewriteParagraph: (text: string, instruction: string, context?: string) =>
-        getAIProvider().rewriteParagraph(text, instruction, context),
+    suggestTheses: (facts: string, options?: ThesisOptions & { provider?: string }) =>
+        getAIProvider(options?.provider).suggestTheses(facts, options),
+
+    generateDocument: (context: GenerateContext & { provider?: string }) =>
+        getAIProvider(context.provider).generateDocument(context),
+
+    rewriteParagraph: (text: string, instruction: string, context?: string, provider?: string) =>
+        getAIProvider(provider).rewriteParagraph(text, instruction, context),
 };
