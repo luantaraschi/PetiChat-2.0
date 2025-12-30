@@ -100,7 +100,7 @@ export function Step3Editor() {
             const result = await documentsApi.export(documentId, format);
             toast({
                 title: 'Exportação iniciada',
-                description: result.message || `Arquivo ${format.toUpperCase()} será baixado em breve.`,
+                description: (result as any).message || `Arquivo ${format.toUpperCase()} será baixado em breve.`,
             });
             // In production, this would trigger a download
             // window.open(result.downloadUrl, '_blank');

@@ -4,7 +4,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { documentsApi, aiApi } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
+// Textarea removed - not used
 import { useToast } from '@/hooks/use-toast';
 import { documentTypeLabels } from '@petichat/shared';
 import {
@@ -94,7 +94,7 @@ export function DocumentEditorPage() {
             const result = await documentsApi.export(documentId!, format);
             toast({
                 title: 'Exportação iniciada',
-                description: result.message || `Arquivo ${format.toUpperCase()} será baixado.`,
+                description: (result as any).message || `Arquivo ${format.toUpperCase()} será baixado.`,
             });
         } catch (error) {
             toast({
@@ -144,7 +144,7 @@ export function DocumentEditorPage() {
                     <div>
                         <h1 className="text-2xl font-bold">{document.title}</h1>
                         <p className="text-sm text-muted-foreground">
-                            {documentTypeLabels[document.documentType]} • Caso: {document.case?.clientName}
+                            {documentTypeLabels[document.documentType]} • Caso: {(document as any).case?.clientName}
                         </p>
                     </div>
                 </div>

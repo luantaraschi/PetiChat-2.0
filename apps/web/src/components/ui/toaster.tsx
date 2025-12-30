@@ -1,4 +1,4 @@
-import * as React from "react"
+// React not needed as JSX transform is auto
 
 import {
     Toast,
