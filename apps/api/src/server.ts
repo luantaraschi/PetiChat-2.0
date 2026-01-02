@@ -11,12 +11,12 @@ import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
 
 // Import routes
-import { authRoutes } from './modules/auth/routes';
-import { casesRoutes } from './modules/cases/routes';
-import { documentsRoutes } from './modules/documents/routes';
-import { aiRoutes } from './modules/ai/routes';
-import { jurisprudenceRoutes } from './modules/jurisprudence/routes';
-import { metricsRoutes } from './modules/metrics/routes';
+import { authRoutes } from './modules/auth/routes.js';
+import { casesRoutes } from './modules/cases/routes.js';
+import { documentsRoutes } from './modules/documents/routes.js';
+import { aiRoutes } from './modules/ai/routes.js';
+import { jurisprudenceRoutes } from './modules/jurisprudence/routes.js';
+import { metricsRoutes } from './modules/metrics/routes.js';
 
 // Environment variables
 const PORT = parseInt(process.env.API_PORT || '3001', 10);
