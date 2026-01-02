@@ -48,14 +48,14 @@ RUN pnpm --filter @petichat/api build
 # Prune dev dependencies to keep the image small
 RUN pnpm --filter @petichat/api --prod deploy deployed
 
-# Copy Prisma schema and generate client inside deployed folder
+# Copy Prisma schema to deployed folder
 WORKDIR /app/deployed
 COPY apps/api/prisma ./prisma
 
-# Install prisma CLI (it's a devDep so not included in deploy) and generate client
-RUN npm install prisma@5.22.0 --save-dev && \
-    npx prisma generate --schema=./prisma/schema.prisma && \
-    rm -rf node_modules/prisma node_modules/.bin/prisma
+# Copy the pre-generated Prisma Client from the main build
+# The .prisma folder is inside the @prisma/client package in pnpm's structure
+RUN mkdir -p node_modules/.prisma && \
+    cp -r /app/node_modules/.pnpm/@prisma+client@*/node_modules/.prisma/client node_modules/.prisma/
 
 # ================================
 # Production Stage
