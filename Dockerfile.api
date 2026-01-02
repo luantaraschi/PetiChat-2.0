@@ -48,6 +48,9 @@ RUN pnpm --filter @petichat/api build
 # Prune dev dependencies to keep the image small
 RUN pnpm --filter @petichat/api --prod deploy deployed
 
+# Copy Prisma Client generated files to deployed folder (pnpm deploy doesn't include them)
+RUN if [ -d "node_modules/.prisma" ]; then cp -r node_modules/.prisma deployed/node_modules/.prisma; fi
+
 # Generate Prisma Client inside deployed folder
 WORKDIR /app/deployed
 COPY apps/api/prisma ./prisma
@@ -58,8 +61,8 @@ RUN npx prisma generate
 # ================================
 FROM node:20-alpine AS runner
 
-# Install OpenSSL required by Prisma
-RUN apk add --no-cache openssl
+# Install OpenSSL and libc6-compat required by Prisma on Alpine
+RUN apk add --no-cache openssl libc6-compat
 
 WORKDIR /app
 
