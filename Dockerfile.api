@@ -48,6 +48,11 @@ RUN pnpm --filter @petichat/api build
 # Prune dev dependencies to keep the image small
 RUN pnpm --filter @petichat/api --prod deploy deployed
 
+# Generate Prisma Client inside deployed folder
+WORKDIR /app/deployed
+COPY apps/api/prisma ./prisma
+RUN npx prisma generate
+
 # ================================
 # Production Stage
 # ================================
