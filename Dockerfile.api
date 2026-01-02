@@ -52,8 +52,10 @@ RUN pnpm --filter @petichat/api --prod deploy deployed
 WORKDIR /app/deployed
 COPY apps/api/prisma ./prisma
 
-# Generate Prisma Client using the local prisma version (not npx which gets latest)
-RUN node_modules/.bin/prisma generate --schema=./prisma/schema.prisma
+# Install prisma CLI (it's a devDep so not included in deploy) and generate client
+RUN npm install prisma@5.22.0 --save-dev && \
+    npx prisma generate --schema=./prisma/schema.prisma && \
+    rm -rf node_modules/prisma node_modules/.bin/prisma
 
 # ================================
 # Production Stage
