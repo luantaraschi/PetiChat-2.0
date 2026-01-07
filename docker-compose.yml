@@ -30,12 +30,13 @@ services:
   redis:
     image: redis:7-alpine
     container_name: petichat-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -55,16 +56,19 @@ services:
       NODE_ENV: production
       API_PORT: 3001
       API_HOST: 0.0.0.0
+      # Use service names for internal communication
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-petichat}?schema=public
-      REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-super-secret-refresh-key-change-this}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      # Security Keys
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      # AI Providers
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY}
       AI_PROVIDER: ${AI_PROVIDER:-openai}
-      # CORS: Allow requests from the web container (same origin in production)
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      # CORS - Allow requests from Vercel frontend or local dev
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
     ports:
       - "3001:3001"
     depends_on:
@@ -74,27 +78,6 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3001/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: always
-    networks:
-      - petichat-network
-
-  # ================================
-  # Frontend Web App (Nginx)
-  # ================================
-  web:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
-    container_name: petichat-web
-    ports:
-      - "3000:80"
-    depends_on:
-      - api
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:80"]
       interval: 30s
       timeout: 10s
       retries: 3
