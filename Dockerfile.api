@@ -1,14 +1,16 @@
 # ================================
 # Build Stage
 # ================================
-FROM node:20-alpine AS builder
+# Using Debian-based image instead of Alpine to avoid Prisma/OpenSSL/musl issues
+FROM node:20-slim AS builder
 
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat openssl
+# Install OpenSSL required for Prisma
+RUN apt-get update -y && apt-get install -y openssl
+
 # Set working directory
 WORKDIR /app
 
-# Enable pnpm with fixed version for deterministic builds
+# Enable pnpm
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 # Copy workspace config files first to cache dependencies
@@ -17,79 +19,57 @@ COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 
-# Debug output for troubleshooting
-RUN echo "=== Build Environment ===" && \
-    node -v && \
-    corepack --version && \
-    pnpm -v && \
-    pnpm config get registry
-
-# Configure network settings with high tolerance and install dependencies
-RUN pnpm config set fetch-retries 10 && \
-    pnpm config set fetch-retry-mintimeout 60000 && \
-    pnpm config set fetch-retry-maxtimeout 300000 && \
-    pnpm config set network-timeout 300000 && \
-    pnpm install --frozen-lockfile --prefer-offline
+# Install dependencies
+# Using --ignore-scripts to avoid running postinstall scripts immediately
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy source code
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 COPY tsconfig.json ./
 
-# Generate Prisma Client
+# Generate Prisma Client explicitly
 WORKDIR /app/apps/api
+# Ensure we have the schema before generating
 RUN pnpm db:generate
 
-# Build the project
-WORKDIR /app
-RUN pnpm --filter @petichat/shared build
-RUN pnpm --filter @petichat/api build
-
-# Prune dev dependencies to keep the image small
-RUN pnpm --filter @petichat/api --prod deploy deployed
-
-# Copy Prisma schema to deployed folder
-WORKDIR /app/deployed
-COPY apps/api/prisma ./prisma
-
-# Copy the pre-generated Prisma Client from the main build to the pnpm structure
-# The deployed folder uses pnpm's node_modules structure, so we need to copy to the same location
-RUN PRISMA_CLIENT_PATH=$(find node_modules/.pnpm -name "@prisma+client*" -type d | head -1) && \
-    if [ -n "$PRISMA_CLIENT_PATH" ]; then \
-    mkdir -p "$PRISMA_CLIENT_PATH/node_modules/.prisma" && \
-    cp -r /app/node_modules/.pnpm/@prisma+client@*/node_modules/.prisma/client "$PRISMA_CLIENT_PATH/node_modules/.prisma/"; \
-    fi
+# Build the API
+RUN pnpm build
 
 # ================================
 # Production Stage
 # ================================
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 
-# Install OpenSSL and libc6-compat required by Prisma on Alpine
-RUN apk add --no-cache openssl libc6-compat
+# Install OpenSSL for runtime
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Create non-root user for security
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 fastify
+# Enable pnpm
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
-# Copy built application from builder stage
-COPY --from=builder --chown=fastify:nodejs /app/deployed ./
-
-# Copy Prisma schema and migrations if needed for migration scripts running in prod
-COPY --from=builder --chown=fastify:nodejs /app/apps/api/prisma ./prisma
+# Copy built artifacts and necessary files from builder
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/pnpm-lock.yaml ./
+COPY --from=builder /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+# Copy node_modules from builder (simplest approach for monorepos, though larger image)
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /app/packages/shared/node_modules ./packages/shared/node_modules
 
 # Set environment
 ENV NODE_ENV=production
-ENV API_PORT=3001
-ENV API_HOST=0.0.0.0
-
-# Switch to non-root user
-USER fastify
+ENV PORT=3001
 
 # Expose port
 EXPOSE 3001
 
-# Start the server
+# Start the application
+WORKDIR /app/apps/api
 CMD ["node", "dist/server.js"]
