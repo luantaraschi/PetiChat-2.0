@@ -38,6 +38,7 @@ COPY tsconfig.json ./
 
 # Generate Prisma Client
 WORKDIR /app/apps/api
+ENV PRISMA_CLI_BINARY_TARGETS=linux-musl-openssl-3.0.x
 RUN pnpm db:generate
 
 # Build the project
