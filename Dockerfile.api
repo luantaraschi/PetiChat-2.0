@@ -25,6 +25,8 @@ RUN echo "=== Build Environment ===" && \
     pnpm config get registry
 
 # Configure network settings with high tolerance and install dependencies
+# Define binary target before install to ensure postinstall hook downloads the correct engine
+ENV PRISMA_CLI_BINARY_TARGETS=linux-musl-openssl-3.0.x
 RUN pnpm config set fetch-retries 10 && \
     pnpm config set fetch-retry-mintimeout 60000 && \
     pnpm config set fetch-retry-maxtimeout 300000 && \
@@ -38,7 +40,6 @@ COPY tsconfig.json ./
 
 # Generate Prisma Client
 WORKDIR /app/apps/api
-ENV PRISMA_CLI_BINARY_TARGETS=linux-musl-openssl-3.0.x
 RUN pnpm db:generate
 
 # Build the project
